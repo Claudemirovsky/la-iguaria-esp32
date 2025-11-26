@@ -1,0 +1,6 @@
+CompileFlags:
+  Remove:
+    [-fno-tree-switch-conversion, -mlongcalls, -fstrict-volatile-bitfields]
+  BuiltinHeaders: QueryDriver
+Diagnostics:
+  Suppress: "pp_file_not_found"
