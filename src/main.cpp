@@ -3,9 +3,8 @@
 #include "bt_manager.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <PubSubClient.h>
+#include <MQTT.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
 
 BTManager bt_manager;
 
@@ -13,8 +12,8 @@ String wifi_ssid = "";
 String wifi_pass = "";
 bool wifi_received = false;
 
-WiFiClientSecure wifiClient;
-PubSubClient mqtt(wifiClient);
+WiFiClient wifiClient;
+MQTTClient mqtt(256);
 
 void btmanager_callback(String raw, BTManager *bt) {
     if (raw.length() > 0) {
@@ -83,12 +82,8 @@ bool mqtt_connect() {
     return mqtt.connect(client_id.c_str(), mqtt_user, mqtt_password);
 }
 
-void mqtt_callback(char *topic, byte *payload, uint32_t length) {
-    Serial.printf("[%s]: ", topic);
-    for (int i = 0; i < length; i++) {
-        Serial.print((char)payload[i]);
-    }
-    Serial.println();
+void mqtt_callback(String &topic, String &payload) {
+    Serial.printf("[%s]: %s", topic.c_str(), payload.c_str());
     Serial.println("-----------------------");
 }
 
@@ -98,10 +93,9 @@ void setup(void) {
     bt_manager.setOnWriteCallBack(btmanager_callback);
     bt_manager.init("Esp32 Momento");
     Serial.printf("Advertising Started\n");
-    wifiClient.setCACert(mqtt_cert);
-    mqtt.setServer(mqtt_server, mqtt_port);
+    mqtt.begin(mqtt_server, mqtt_port, wifiClient);
     mqtt.subscribe(mqtt_topic);
-    mqtt.setCallback(mqtt_callback);
+    mqtt.onMessage(mqtt_callback);
 }
 
 int counter = 0;
@@ -116,13 +110,15 @@ void loop() {
         if (mqtt_connect()) {
             Serial.println("Conectado ao MQTT!");
         } else {
-            Serial.print("Erro ao conectar ao MQTT: ");
-            Serial.println(mqtt.state());
+            Serial.printf("Erro ao conectar ao MQTT: %d\n", mqtt.lastError());
         }
     }
 
     if (mqtt.connected()) {
-        mqtt.loop();
+        if (!mqtt.loop()) {
+            Serial.printf("Erro no loop do mqtt: %d", mqtt.lastError());
+            return;
+        }
         char str[32];
         snprintf(str, 31, "Pulso: %d", ++counter);
         Serial.printf("Enviando mensagem: %s\n", str);
