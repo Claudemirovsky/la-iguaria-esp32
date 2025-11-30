@@ -9,6 +9,7 @@ enum BTCommand {
     BTCOMMAND_ERROR = 1,
     BTCOMMAND_SUCCESS,
     BTCOMMAND_MESSAGE,
+    BTCOMMAND_WIFI_LIST,
     BTCOMMAND_WIFI_AUTH,
 };
 
@@ -35,5 +36,6 @@ class BTManager {
     inline void notify(enum BTCommand, std::function<void(JsonDocument &)>);
     void send_error(enum BTError);
     void notify(enum BTCommand, const char *);
+    void notify(enum BTCommand, const String[], int len);
 };
 #endif

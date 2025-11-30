@@ -98,3 +98,11 @@ void BTManager::send_error(enum BTError error) {
     BTManager::notify(BTCOMMAND_ERROR,
                       [error](JsonDocument &doc) { doc["data"] = error; });
 }
+
+void BTManager::notify(enum BTCommand cmd, const String data[], int len) {
+    BTManager::notify(cmd, [&data, len](JsonDocument &doc) {
+        JsonArray arr = doc["data"].to<JsonArray>();
+        for (int i = 0; i < len; ++i)
+            arr.add(data[i]);
+    });
+}

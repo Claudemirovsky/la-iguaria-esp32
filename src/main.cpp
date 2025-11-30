@@ -31,6 +31,13 @@ void btmanager_callback(String raw, BTManager *bt) {
         }
 
         switch (doc["cmd"].as<int>()) {
+        case BTCOMMAND_WIFI_LIST: {
+            int n = WiFi.scanNetworks();
+            String ssids[n];
+            for (int i = 0; i < n; ++i)
+                ssids[i] = WiFi.SSID(i);
+            bt->notify(BTCOMMAND_WIFI_LIST, ssids, n);
+        }; break;
         case BTCOMMAND_WIFI_AUTH:
             wifi_ssid = doc["ssid"].as<String>();
             if (!wifi_ssid) {
