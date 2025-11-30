@@ -23,23 +23,31 @@ void btmanager_callback(String raw, BTManager *bt) {
         JsonDocument doc;
         DeserializationError err = deserializeJson(doc, raw);
 
-        if (!err) {
+        if (err || !doc["cmd"]) {
+            Serial.println("JSON inválido!");
+
+            bt->send_error(BTERROR_INVALID_DATA);
+            return;
+        }
+
+        switch (doc["cmd"].as<int>()) {
+        case BTCOMMAND_WIFI_AUTH:
             wifi_ssid = doc["ssid"].as<String>();
+            if (!wifi_ssid) {
+                bt->send_error(BTERROR_WIFI_INVALID_SSID);
+                break;
+            }
             wifi_pass = doc["password"].as<String>();
             wifi_received = true;
 
             Serial.println("SSID recebido: " + wifi_ssid);
-            Serial.println("Senha recebida: " + wifi_pass);
-
-            if (bt->ble_connected) {
-                bt->notify("Credenciais OK");
-            }
-        } else {
-            Serial.println("JSON inválido!");
-
-            if (bt->ble_connected) {
-                bt->notify("ERRO: JSON inválido");
-            }
+            if (wifi_pass && !wifi_pass.isEmpty())
+                Serial.println("Senha recebida: " + wifi_pass);
+            bt->notify(BTCOMMAND_MESSAGE, "Credenciais OK");
+            break;
+        default:
+            bt->send_error(BTERROR_INVALID_COMMAND);
+            break;
         }
     }
 }
@@ -50,7 +58,7 @@ void setupWiFi() {
     Serial.println("SENHA: " + wifi_pass);
 
     WiFi.mode(WIFI_STA);
-    WiFi.begin(wifi_ssid.c_str(), wifi_pass.c_str());
+    WiFi.begin(wifi_ssid, wifi_pass);
 
     int timeout = 0;
     while (WiFi.status() != WL_CONNECTED && timeout < 20) {
@@ -61,18 +69,14 @@ void setupWiFi() {
 
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println("\nWiFi conectado!");
-        Serial.println("IP: " + WiFi.localIP().toString());
+        String ipAddress = WiFi.localIP().toString();
+        Serial.println("IP: " + ipAddress);
 
-        if (bt_manager.ble_connected) {
-            bt_manager.notify(
-                ("WiFi OK | IP: " + WiFi.localIP().toString()).c_str());
-        }
+        bt_manager.notify(BTCOMMAND_SUCCESS,
+                          ("WiFi OK | IP: " + ipAddress).c_str());
     } else {
         Serial.println("\nFalha ao conectar ao Wi-Fi!");
-
-        if (bt_manager.ble_connected) {
-            bt_manager.notify("WiFI ERROR");
-        }
+        bt_manager.send_error(BTERROR_WIFI_CONNECTION);
     }
 }
 

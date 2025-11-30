@@ -36,10 +36,6 @@ class CharacteristicCallback : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic *pCharacteristic,
                  NimBLEConnInfo &connInfo) override {
         String raw = pCharacteristic->getValue().c_str();
-        Serial.printf("OnWrite called. onWrite is null? [%d] | btmanager is "
-                      "null? [%d] | raw: %s\n",
-                      this->onWriteCallBack == nullptr,
-                      this->btmanager == nullptr, raw);
         if (this->onWriteCallBack != nullptr && this->btmanager != nullptr)
             this->onWriteCallBack(raw, this->btmanager);
     }
@@ -78,7 +74,27 @@ void BTManager::init(const char *name) {
     advertising->start();
 }
 
-void BTManager::notify(const char *message) {
-    this->ble_output->setValue(message);
+inline void BTManager::notify(enum BTCommand cmd,
+                              std::function<void(JsonDocument &)> function) {
+    if (!this->ble_connected)
+        return;
+    JsonDocument doc;
+    doc["cmd"] = cmd;
+    function(doc);
+    String out;
+    serializeJson(doc, out);
+    this->ble_output->setValue(out);
     this->ble_output->notify();
+}
+
+void BTManager::notify(enum BTCommand cmd, const char *message) {
+    BTManager::notify(cmd, [&message](JsonDocument &doc) {
+        if (message != nullptr)
+            doc["data"] = message;
+    });
+}
+
+void BTManager::send_error(enum BTError error) {
+    BTManager::notify(BTCOMMAND_ERROR,
+                      [error](JsonDocument &doc) { doc["data"] = error; });
 }
