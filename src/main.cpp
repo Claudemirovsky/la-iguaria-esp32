@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <MQTT.h>
 #include <WiFi.h>
+#include <time.h>
 
 BTManager bt_manager;
 
@@ -81,10 +82,29 @@ void setupWiFi() {
 
         bt_manager.notify(BTCOMMAND_SUCCESS,
                           ("WiFi OK | IP: " + ipAddress).c_str());
+        configTime(0, 0, "pool.ntp.org");
     } else {
         Serial.println("\nFalha ao conectar ao Wi-Fi!");
         bt_manager.send_error(BTERROR_WIFI_CONNECTION);
     }
+}
+
+int64_t getEpochMillis() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    return (int64_t)(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
+}
+
+void send_pulse() {
+    uint32_t user_id = 666;
+    JsonDocument doc;
+    doc["user_id"] = user_id;
+    doc["timestamp"] = getEpochMillis();
+    String out;
+    serializeJson(doc, out);
+    Serial.printf("Enviando mensagem: %s\n", out.c_str());
+    mqtt.publish(mqtt_topic, out);
 }
 
 bool mqtt_connect() {
@@ -130,10 +150,7 @@ void loop() {
             Serial.printf("Erro no loop do mqtt: %d", mqtt.lastError());
             return;
         }
-        char str[32];
-        snprintf(str, 31, "Pulso: %d", ++counter);
-        Serial.printf("Enviando mensagem: %s\n", str);
-        mqtt.publish(mqtt_topic, str);
+        send_pulse();
         delay(5000);
     }
 }
