@@ -4,16 +4,17 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <MQTT.h>
-#include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <time.h>
 
+#define LDR_PIN 15
 BTManager bt_manager;
 
 String wifi_ssid = "";
 String wifi_pass = "";
 bool wifi_received = false;
 
-WiFiClient wifiClient;
+WiFiClientSecure wifiClient;
 MQTTClient mqtt(256);
 
 void btmanager_callback(String raw, BTManager *bt) {
@@ -118,20 +119,33 @@ void mqtt_callback(String &topic, String &payload) {
     Serial.println("-----------------------");
 }
 
+uint8_t lastState = 0;
 void setup(void) {
     Serial.begin(115200);
-
+    pinMode(LDR_PIN, INPUT);
     bt_manager.setOnWriteCallBack(btmanager_callback);
     bt_manager.init("Esp32 Momento");
     Serial.printf("Advertising Started\n");
     mqtt.begin(mqtt_server, mqtt_port, wifiClient);
     mqtt.subscribe(mqtt_topic);
     mqtt.onMessage(mqtt_callback);
+    wifiClient.setCACert(mqtt_cert);
+    lastState = digitalRead(LDR_PIN);
 }
 
-int counter = 0;
+bool detect_pulse() {
+    uint8_t state = digitalRead(LDR_PIN);
+    if (state != lastState) {
+        delay(10); // Anti ruído
+        state = digitalRead(LDR_PIN);
+        if (state != lastState) {
+            lastState = state;
+            return state == LOW; // LOW = tem luz, HIGH = sem luz
+        }
+    }
+    return false;
+}
 void loop() {
-    delay(1000);
     if (wifi_received) {
         wifi_received = false;
         setupWiFi();
@@ -150,7 +164,7 @@ void loop() {
             Serial.printf("Erro no loop do mqtt: %d", mqtt.lastError());
             return;
         }
-        send_pulse();
-        delay(5000);
+        if (detect_pulse())
+            send_pulse();
     }
 }
