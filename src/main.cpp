@@ -8,12 +8,15 @@
 #include <time.h>
 
 #define LDR_PIN 15
+#define HOUR 3600
+#define FORTALEZA_OFFSET_GMT -3
+#define TIMEZONE_OFFSET (FORTALEZA_OFFSET_GMT * HOUR)
 BTManager bt_manager;
 
 String wifi_ssid = "";
 String wifi_pass = "";
 bool wifi_received = false;
-
+bool time_sync = false;
 WiFiClientSecure wifiClient;
 MQTTClient mqtt(256);
 
@@ -83,7 +86,9 @@ void setupWiFi() {
 
         bt_manager.notify(BTCOMMAND_SUCCESS,
                           ("WiFi OK | IP: " + ipAddress).c_str());
-        configTime(0, 0, "pool.ntp.org");
+        configTime(TIMEZONE_OFFSET, 0, "pool.ntp.org");
+        Serial.println("Horário configurado!");
+        time_sync = true;
     } else {
         Serial.println("\nFalha ao conectar ao Wi-Fi!");
         bt_manager.send_error(BTERROR_WIFI_CONNECTION);
@@ -98,9 +103,9 @@ int64_t getEpochMillis() {
 }
 
 void send_pulse() {
-    uint32_t user_id = 666;
+    uint32_t user_id = 1;
     JsonDocument doc;
-    doc["user_id"] = user_id;
+    doc["userId"] = user_id;
     doc["timestamp"] = getEpochMillis();
     String out;
     serializeJson(doc, out);
@@ -136,7 +141,7 @@ void setup(void) {
 bool detect_pulse() {
     uint8_t state = digitalRead(LDR_PIN);
     if (state != lastState) {
-        delay(10); // Anti ruído
+        delay(50); // Anti ruído
         state = digitalRead(LDR_PIN);
         if (state != lastState) {
             lastState = state;
@@ -151,7 +156,7 @@ void loop() {
         setupWiFi();
     }
 
-    if (!mqtt.connected() && WiFi.status() == WL_CONNECTED) {
+    if (!mqtt.connected() && WiFi.status() == WL_CONNECTED && time_sync) {
         if (mqtt_connect()) {
             Serial.println("Conectado ao MQTT!");
         } else {
