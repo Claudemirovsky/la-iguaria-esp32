@@ -1,10 +1,12 @@
 
 #include "broker_mqtt.h"
 #include "bt_manager.h"
+#include "settings.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <MQTT.h>
 #include <WiFiClientSecure.h>
+#include <cstdint>
 #include <time.h>
 
 #define LDR_PIN 15
@@ -12,9 +14,8 @@
 #define FORTALEZA_OFFSET_GMT -3
 #define TIMEZONE_OFFSET (FORTALEZA_OFFSET_GMT * HOUR)
 BTManager bt_manager;
+Settings settings;
 
-String wifi_ssid = "";
-String wifi_pass = "";
 bool wifi_received = false;
 bool time_sync = false;
 WiFiClientSecure wifiClient;
@@ -43,20 +44,24 @@ void btmanager_callback(String raw, BTManager *bt) {
                 ssids[i] = WiFi.SSID(i);
             bt->notify(BTCOMMAND_WIFI_LIST, ssids, n);
         }; break;
-        case BTCOMMAND_WIFI_AUTH:
-            wifi_ssid = doc["ssid"].as<String>();
-            if (!wifi_ssid) {
+        case BTCOMMAND_WIFI_AUTH: {
+            String ssid = doc["ssid"].as<String>();
+            if (!ssid) {
                 bt->send_error(BTERROR_WIFI_INVALID_SSID);
                 break;
             }
-            wifi_pass = doc["password"].as<String>();
-            wifi_received = true;
+            String password = doc["password"].as<String>();
+            settings.setWifiSSID(ssid);
 
-            Serial.println("SSID recebido: " + wifi_ssid);
-            if (wifi_pass && !wifi_pass.isEmpty())
-                Serial.println("Senha recebida: " + wifi_pass);
+            Serial.println("SSID recebido: " + ssid);
+            if (password && !password.isEmpty())
+                Serial.println("Senha recebida: " + password);
             bt->notify(BTCOMMAND_MESSAGE, "Credenciais OK");
-            break;
+            settings.setWifiSSID(ssid);
+            settings.setWifiPassword(password);
+            EEPROM.commit();
+            wifi_received = true;
+        }; break;
         default:
             bt->send_error(BTERROR_INVALID_COMMAND);
             break;
@@ -66,11 +71,11 @@ void btmanager_callback(String raw, BTManager *bt) {
 
 void setupWiFi() {
     Serial.println("Conectando ao Wi-Fi...");
-    Serial.println("SSID: " + wifi_ssid);
-    Serial.println("SENHA: " + wifi_pass);
+    Serial.println("SSID: " + settings.getWifiSSID());
+    Serial.println("SENHA: " + settings.getWifiPassword());
 
     WiFi.mode(WIFI_STA);
-    WiFi.begin(wifi_ssid, wifi_pass);
+    WiFi.begin(settings.getWifiSSID(), settings.getWifiPassword());
 
     int timeout = 0;
     while (WiFi.status() != WL_CONNECTED && timeout < 20) {
@@ -136,6 +141,11 @@ void setup(void) {
     mqtt.onMessage(mqtt_callback);
     wifiClient.setCACert(mqtt_cert);
     lastState = digitalRead(LDR_PIN);
+    EEPROM.begin(256);
+    settings.load();
+    if (settings.getWifiSSID().length()) {
+        wifi_received = true;
+    }
 }
 
 bool detect_pulse() {
