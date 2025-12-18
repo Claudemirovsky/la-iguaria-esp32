@@ -39,11 +39,19 @@ void btmanager_callback(String raw, BTManager *bt) {
         switch (doc["cmd"].as<int>()) {
         case BTCOMMAND_WIFI_LIST: {
             int n = WiFi.scanNetworks();
+            Serial.printf("WiFis detectados: %d\n", n);
+            if (n == WIFI_SCAN_FAILED) {
+                bt->send_error(BTERROR_WIFI_LIST);
+                break;
+            }
             String ssids[n];
-            for (int i = 0; i < n; ++i)
+            for (int i = 0; i < n; ++i) {
                 ssids[i] = WiFi.SSID(i);
+                Serial.printf("%02d) %s\n", i + 1, ssids[i].c_str());
+            }
             bt->notify(BTCOMMAND_WIFI_LIST, ssids, n);
         }; break;
+
         case BTCOMMAND_WIFI_AUTH: {
             String ssid = doc["ssid"].as<String>();
             if (!ssid) {
@@ -59,8 +67,8 @@ void btmanager_callback(String raw, BTManager *bt) {
             bt->notify(BTCOMMAND_MESSAGE, "Credenciais OK");
             settings.setWifiSSID(ssid);
             settings.setWifiPassword(password);
-            EEPROM.commit();
             wifi_received = true;
+            EEPROM.commit();
         }; break;
         case BTCOMMAND_USER_AUTH: {
             uint64_t uid = doc["userId"].as<uint64_t>();
@@ -109,6 +117,7 @@ void setupWiFi() {
         Serial.println("Horário configurado!");
         time_sync = true;
     } else {
+        WiFi.disconnect();
         Serial.println("\nFalha ao conectar ao Wi-Fi!");
         bt_manager.send_error(BTERROR_WIFI_CONNECTION);
     }
