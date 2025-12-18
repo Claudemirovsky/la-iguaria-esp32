@@ -1,6 +1,4 @@
 #include "settings.h"
-#include "EEPROM.h"
-#include "esp_wifi_types.h"
 
 void Settings::load() {
     uint8_t ssidLen = EEPROM.readByte(EEPROM_WIFI_SSID_LEN);
@@ -16,9 +14,17 @@ void Settings::load() {
     if (passwordLen <= MAX_PASSPHRASE_LEN)
         for (uint8_t i = 0; i < passwordLen; ++i)
             wifiPassword += (char)EEPROM.readByte(EEPROM_WIFI_PASSWORD + i);
+    userId = EEPROM.readULong64(EEPROM_USER_ID);
     Serial.println("EEPROM lido!");
     Serial.println("SSID: " + wifiSSID);
     Serial.println("Senha: " + wifiPassword);
+    Serial.printf("UID: %llu\n", userId);
+}
+
+void Settings::setUserId(const uint64_t userId) {
+    if (userId != this->userId)
+        EEPROM.writeULong64(EEPROM_USER_ID, userId);
+    this->userId = userId;
 }
 
 void Settings::setWifiSSID(const String &ssid) {
@@ -38,6 +44,8 @@ void Settings::setWifiPassword(const String &password) {
     this->wifiPassword = password;
     EEPROM.writeBytes(EEPROM_WIFI_PASSWORD, password.c_str(), len);
 }
+
+uint64_t Settings::getUserId() { return userId; }
 
 String Settings::getWifiSSID() { return wifiSSID; }
 

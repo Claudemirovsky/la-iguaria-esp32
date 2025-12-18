@@ -62,6 +62,20 @@ void btmanager_callback(String raw, BTManager *bt) {
             EEPROM.commit();
             wifi_received = true;
         }; break;
+        case BTCOMMAND_USER_AUTH: {
+            uint64_t uid = doc["userId"].as<uint64_t>();
+            settings.setUserId(uid);
+            if (EEPROM.commit()) {
+                String msg = "UserId recebido: ";
+                msg += String(uid);
+                bt->notify(BTCOMMAND_SUCCESS, msg.c_str());
+                Serial.println(msg);
+
+            } else {
+                bt->send_error(BTERROR_INVALID_USERID);
+            }
+        }; break;
+
         default:
             bt->send_error(BTERROR_INVALID_COMMAND);
             break;
@@ -108,9 +122,8 @@ int64_t getEpochMillis() {
 }
 
 void send_pulse() {
-    uint32_t user_id = 1;
     JsonDocument doc;
-    doc["userId"] = user_id;
+    doc["userId"] = settings.getUserId();
     doc["timestamp"] = getEpochMillis();
     String out;
     serializeJson(doc, out);
