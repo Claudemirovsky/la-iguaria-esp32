@@ -92,10 +92,14 @@ void btmanager_callback(String raw, BTManager *bt) {
 }
 
 void setupWiFi() {
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("Desconectando do Wi-Fi...");
+        WiFi.disconnect();
+        delay(100);
+    }
     Serial.println("Conectando ao Wi-Fi...");
     Serial.println("SSID: " + settings.getWifiSSID());
     Serial.println("SENHA: " + settings.getWifiPassword());
-
     WiFi.mode(WIFI_STA);
     WiFi.begin(settings.getWifiSSID(), settings.getWifiPassword());
 
