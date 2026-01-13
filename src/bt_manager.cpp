@@ -1,29 +1,34 @@
 #include "bt_manager.h"
 
 #define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define BT_INPUT_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-#define BT_OUTPUT_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a9"
+#define MESSAGE_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define BOX_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a9"
 
-class ServerCallbacks : public NimBLEServerCallbacks {
+String boxValue = "0";
+
+class MyServerCallbacks : public BLEServerCallbacks {
   public:
     BTManager *btmanager = nullptr;
 
     void setBTManager(BTManager *btm) { this->btmanager = btm; }
-    void onConnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo) override {
-        Serial.printf("Client address: %s\n",
-                      connInfo.getAddress().toString().c_str());
-        this->btmanager->ble_connected = true;
+
+    void onConnect(BLEServer *pServer) override {
+        Serial.println("Connected");
+        if (this->btmanager != nullptr) {
+            this->btmanager->ble_connected = true;
+        }
     }
 
-    void onDisconnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo,
-                      int reason) override {
-        Serial.printf("Client disconnected - start advertising\n");
-        this->btmanager->ble_connected = false;
-        NimBLEDevice::startAdvertising();
+    void onDisconnect(BLEServer *pServer) override {
+        Serial.println("Disconnected");
+        if (this->btmanager != nullptr) {
+            this->btmanager->ble_connected = false;
+        }
+        BLEDevice::startAdvertising();
     }
 } serverCallbacks;
 
-class CharacteristicCallback : public NimBLECharacteristicCallbacks {
+class CharacteristicsCallbacks : public BLECharacteristicCallbacks {
   public:
     BTMANAGER_CALLBACK_SIGNATURE onWriteCallBack;
     BTManager *btmanager = nullptr;
@@ -33,15 +38,30 @@ class CharacteristicCallback : public NimBLECharacteristicCallbacks {
         this->onWriteCallBack = func;
     }
 
-    void onWrite(NimBLECharacteristic *pCharacteristic,
-                 NimBLEConnInfo &connInfo) override {
-        String raw = pCharacteristic->getValue().c_str();
-        if (this->onWriteCallBack != nullptr && this->btmanager != nullptr)
-            this->onWriteCallBack(raw, this->btmanager);
+    void onWrite(BLECharacteristic *pCharacteristic) override {
+        Serial.print("Value Written ");
+        Serial.println(pCharacteristic->getValue().c_str());
+
+        if (this->btmanager == nullptr)
+            return;
+
+        // Verifica qual characteristic foi escrito comparando diretamente
+        if (pCharacteristic == this->btmanager->box_characteristic) {
+            boxValue = pCharacteristic->getValue().c_str();
+            pCharacteristic->setValue(const_cast<char *>(boxValue.c_str()));
+            pCharacteristic->notify();
+        } else if (pCharacteristic == this->btmanager->message_characteristic) {
+            String raw = pCharacteristic->getValue().c_str();
+            if (this->onWriteCallBack != nullptr)
+                this->onWriteCallBack(raw, this->btmanager);
+        }
     }
 } chCallback;
 
-BTManager::BTManager() : ble_connected(false) {}
+BTManager::BTManager()
+    : ble_connected(false), message_characteristic(nullptr),
+      box_characteristic(nullptr), ble_server(nullptr) {}
+
 void BTManager::setOnWriteCallBack(BTMANAGER_CALLBACK_SIGNATURE callback) {
     this->callback = callback;
 }
@@ -50,41 +70,57 @@ void BTManager::init(const char *name) {
     serverCallbacks.setBTManager(this);
     chCallback.setBTManager(this);
     chCallback.setOnWriteCallBack(this->callback);
-    NimBLEDevice::init(name);
 
-    this->ble_server = NimBLEDevice::createServer();
+    // Create the BLE Device
+    BLEDevice::init(name);
+
+    // Create the BLE Server
+    this->ble_server = BLEDevice::createServer();
     this->ble_server->setCallbacks(&serverCallbacks);
 
-    NimBLEService *pService = this->ble_server->createService(SERVICE_UUID);
-    this->ble_input = pService->createCharacteristic(
-        BT_INPUT_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+    // Create the BLE Service
+    BLEService *pService = this->ble_server->createService(SERVICE_UUID);
+    delay(100);
 
-    this->ble_input->setCallbacks(&chCallback);
+    // Create a BLE Characteristic
+    this->message_characteristic = pService->createCharacteristic(
+        MESSAGE_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE |
+                                         BLECharacteristic::PROPERTY_NOTIFY |
+                                         BLECharacteristic::PROPERTY_INDICATE);
 
-    this->ble_output = pService->createCharacteristic(
-        BT_OUTPUT_UUID, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ);
+    this->box_characteristic = pService->createCharacteristic(
+        BOX_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ |
+                                     BLECharacteristic::PROPERTY_WRITE |
+                                     BLECharacteristic::PROPERTY_NOTIFY |
+                                     BLECharacteristic::PROPERTY_INDICATE);
 
+    // Start the BLE service
     pService->start();
 
-    NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
-    advertising->setName(name);
-    advertising->addServiceUUID(pService->getUUID());
+    // Start advertising
+    this->ble_server->getAdvertising()->start();
 
-    advertising->enableScanResponse(false);
-    advertising->start();
+    this->message_characteristic->setValue("Message one");
+    this->message_characteristic->setCallbacks(&chCallback);
+
+    this->box_characteristic->setValue("0");
+    this->box_characteristic->setCallbacks(&chCallback);
+
+    Serial.println("Waiting for a client connection to notify...");
 }
 
 inline void BTManager::notify(enum BTCommand cmd,
                               std::function<void(JsonDocument &)> function) {
-    if (!this->ble_connected)
+    if (!this->ble_connected || this->message_characteristic == nullptr)
         return;
     JsonDocument doc;
     doc["cmd"] = cmd;
     function(doc);
     String out;
     serializeJson(doc, out);
-    this->ble_output->setValue(out);
-    this->ble_output->notify();
+    this->message_characteristic->setValue(out.c_str());
+    this->message_characteristic->notify();
 }
 
 void BTManager::notify(enum BTCommand cmd, const char *message) {

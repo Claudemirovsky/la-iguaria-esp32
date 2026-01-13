@@ -1,7 +1,9 @@
 #ifndef BT_MANAGER_H
 #define BT_MANAGER_H
 #include "ArduinoJson.h"
-#include <NimBLEDevice.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
 #include <functional>
 
 #define BTMANAGER_CALLBACK_SIGNATURE std::function<void(String, BTManager *)>
@@ -28,8 +30,9 @@ class BTManager {
     BTMANAGER_CALLBACK_SIGNATURE callback;
 
   public:
-    NimBLECharacteristic *ble_input, *ble_output;
-    NimBLEServer *ble_server;
+    BLECharacteristic *message_characteristic;
+    BLECharacteristic *box_characteristic;
+    BLEServer *ble_server;
     bool ble_connected;
 
     BTManager();
